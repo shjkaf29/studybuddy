@@ -1,17 +1,35 @@
 import 'package:flutter/material.dart';
-import 'login_page.dart';  // Adjust path if your file is in a folder
+import 'package:provider/provider.dart';
+import 'screens/login_page.dart';
+import 'services/task_service.dart';
 
 void main() {
-  runApp(MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(
+    MultiProvider(
+      providers: [
+        Provider<TaskService>(
+          create: (_) => TaskService(),
+        ),
+      ],
+      child: const StudyBuddyApp(),
+    ),
+  );
 }
 
-class MyApp extends StatelessWidget {
+class StudyBuddyApp extends StatelessWidget {
+  const StudyBuddyApp({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'StudyBuddy',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: LoginPage(),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+        fontFamily: 'Poppins',
+      ),
+      home: const LoginPage(),
     );
   }
 }
