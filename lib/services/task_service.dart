@@ -1,96 +1,136 @@
-import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../models/task.dart';
 
-class TaskService {
-  static const String _tasksKey = 'all_tasks';
+class TaskService extends ChangeNotifier {
+  final List<Task> _tasks = [];
 
   Future<List<Task>> getTasks({required String userEmail}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final tasksJson = prefs.getStringList(_tasksKey) ?? [];
-      
-      return tasksJson
-          .map((json) => Task.fromMap(jsonDecode(json)))
-          .where((task) => task.userEmail == userEmail) // Filter by user email
-          .toList()
-        ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+      final tasksJson = prefs.getString('tasks_$userEmail');
+      if (tasksJson != null) {
+        final List<dynamic> decodedList = jsonDecode(tasksJson);
+        _tasks.clear();
+        _tasks.addAll(decodedList.map((item) => Task.fromMap(item)));
+        return _tasks.where((task) => task.userEmail == userEmail).toList();
+      }
+      return [];
     } catch (e) {
-      print('Error getting tasks: $e');
+      debugPrint('Error loading tasks: $e');
       return [];
     }
   }
 
-  Future<bool> addTask(Task task) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      List<String> tasks = prefs.getStringList(_tasksKey) ?? [];
-      tasks.add(jsonEncode(task.toMap()));
-      return await prefs.setStringList(_tasksKey, tasks);
-    } catch (e) {
-      print('Error adding task: $e');
-      return false;
+  Future<void> addTask(Task task) async {
+    _tasks.add(task);
+    await _saveTasks(task.userEmail);
+    notifyListeners();
+  }
+
+  Future<void> toggleTaskComplete(String taskId) async {
+    final index = _tasks.indexWhere((t) => t.id == taskId);
+    if (index != -1) {
+      final task = _tasks[index];
+      _tasks[index] = task.copyWith(
+        isCompleted: !task.isCompleted,
+        completedAt: !task.isCompleted ? DateTime.now() : null,
+      );
+      await _saveTasks(_tasks[index].userEmail);
+      notifyListeners();
     }
   }
 
-  Future<bool> updateTask(Task task) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      List<String> tasks = prefs.getStringList(_tasksKey) ?? [];
-      final index = tasks.indexWhere((t) {
-        final taskMap = jsonDecode(t);
-        return taskMap['id'] == task.id && taskMap['userEmail'] == task.userEmail;
-      });
-      
-      if (index != -1) {
-        tasks[index] = jsonEncode(task.toMap());
-        return await prefs.setStringList(_tasksKey, tasks);
-      }
-      return false;
-    } catch (e) {
-      print('Error updating task: $e');
-      return false;
-    }
+  Future<void> deleteTask(String taskId) async {
+    final task = _tasks.firstWhere((t) => t.id == taskId);
+    _tasks.removeWhere((t) => t.id == taskId);
+    await _saveTasks(task.userEmail);
+    notifyListeners();
   }
 
-  Future<bool> deleteTask(String taskId, String userEmail) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      List<String> tasks = prefs.getStringList(_tasksKey) ?? [];
-      final initialLength = tasks.length;
-      
-      tasks.removeWhere((t) {
-        final taskMap = jsonDecode(t);
-        return taskMap['id'] == taskId && taskMap['userEmail'] == userEmail;
-      });
-      
-      if (tasks.length != initialLength) {
-        return await prefs.setStringList(_tasksKey, tasks);
-      }
-      return false;
-    } catch (e) {
-      print('Error deleting task: $e');
-      return false;
+  Future<void> updateTask(Task updatedTask) async {
+    final index = _tasks.indexWhere((t) => t.id == updatedTask.id);
+    if (index != -1) {
+      _tasks[index] = updatedTask;
+      await _saveTasks(updatedTask.userEmail);
+      notifyListeners();
     }
   }
 
   Future<Map<String, int>> getTaskStats(String userEmail) async {
-    try {
-      final tasks = await getTasks(userEmail: userEmail);
-      final completedTasks = tasks.where((task) => task.isCompleted).length;
-      
-      return {
-        'total': tasks.length,
-        'completed': completedTasks,
-        'pending': tasks.length - completedTasks,
-      };
-    } catch (e) {
-      print('Error getting task stats: $e');
-      return {
-        'total': 0,
-        'completed': 0,
-        'pending': 0,
-      };
+    final tasks = await getTasks(userEmail: userEmail);
+    final now = DateTime.now();
+    
+    return {
+      'total': tasks.length,
+      'completed': tasks.where((task) => task.isCompleted).length,
+      'pending': tasks.where((task) => !task.isCompleted).length,
+      'upcoming': tasks.where((task) => 
+        !task.isCompleted && 
+        task.dueDate.isAfter(now)
+      ).length,
+      'overdue': tasks.where((task) => 
+        !task.isCompleted && 
+        task.dueDate.isBefore(now)
+      ).length,
+      'today': tasks.where((task) =>
+        task.dueDate.year == now.year &&
+        task.dueDate.month == now.month &&
+        task.dueDate.day == now.day
+      ).length,
+    };
+  }
+
+  Future<Map<String, List<Task>>> getTasksByType(String userEmail) async {
+    final tasks = await getTasks(userEmail: userEmail);
+    final Map<String, List<Task>> tasksByType = {};
+    
+    for (var task in tasks) {
+      if (!tasksByType.containsKey(task.type)) {
+        tasksByType[task.type] = [];
+      }
+      tasksByType[task.type]!.add(task);
     }
+    
+    return tasksByType;
+  }
+
+  Future<List<Task>> getTasksByDate(String userEmail, DateTime date) async {
+    final tasks = await getTasks(userEmail: userEmail);
+    return tasks.where((task) =>
+      task.dueDate.year == date.year &&
+      task.dueDate.month == date.month &&
+      task.dueDate.day == date.day
+    ).toList();
+  }
+
+  Future<void> _saveTasks(String userEmail) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userTasks = _tasks.where((t) => t.userEmail == userEmail).toList();
+      await prefs.setString(
+        'tasks_$userEmail',
+        jsonEncode(userTasks.map((t) => t.toMap()).toList()),
+      );
+    } catch (e) {
+      debugPrint('Error saving tasks: $e');
+    }
+  }
+
+  Future<void> clearCompletedTasks(String userEmail) async {
+    _tasks.removeWhere((task) => 
+      task.userEmail == userEmail && task.isCompleted
+    );
+    await _saveTasks(userEmail);
+    notifyListeners();
+  }
+
+  double getCompletionRate(String userEmail) {
+    final userTasks = _tasks.where((t) => t.userEmail == userEmail).toList();
+    if (userTasks.isEmpty) return 0.0;
+    
+    final completed = userTasks.where((t) => t.isCompleted).length;
+    return completed / userTasks.length;
   }
 }

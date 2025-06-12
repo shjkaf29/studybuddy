@@ -5,7 +5,8 @@ class Task {
   final DateTime dueDate;
   final String type;
   final bool isCompleted;
-  final String userEmail;  // Add this field
+  final DateTime? completedAt;
+  final String userEmail;
 
   Task({
     required this.id,
@@ -13,9 +14,32 @@ class Task {
     required this.description,
     required this.dueDate,
     required this.type,
-    required this.userEmail,  // Add this parameter
+    required this.userEmail,
     this.isCompleted = false,
+    this.completedAt,
   });
+
+  Task copyWith({
+    String? id,
+    String? title,
+    String? description,
+    DateTime? dueDate,
+    String? type,
+    bool? isCompleted,
+    DateTime? completedAt,
+    String? userEmail,
+  }) {
+    return Task(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      dueDate: dueDate ?? this.dueDate,
+      type: type ?? this.type,
+      isCompleted: isCompleted ?? this.isCompleted,
+      completedAt: completedAt ?? this.completedAt,
+      userEmail: userEmail ?? this.userEmail,
+    );
+  }
 
   Map<String, dynamic> toMap() {
     return {
@@ -25,7 +49,8 @@ class Task {
       'dueDate': dueDate.toIso8601String(),
       'type': type,
       'isCompleted': isCompleted,
-      'userEmail': userEmail,  // Add this field
+      'completedAt': completedAt?.toIso8601String(),
+      'userEmail': userEmail,
     };
   }
 
@@ -36,8 +61,11 @@ class Task {
       description: map['description'],
       dueDate: DateTime.parse(map['dueDate']),
       type: map['type'],
-      userEmail: map['userEmail'],  // Add this field
       isCompleted: map['isCompleted'] ?? false,
+      completedAt: map['completedAt'] != null 
+          ? DateTime.parse(map['completedAt'])
+          : null,
+      userEmail: map['userEmail'],
     );
   }
 }

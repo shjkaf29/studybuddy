@@ -49,7 +49,7 @@ class TaskCard extends StatelessWidget {
       onDismissed: (direction) async {
         try {
           await Provider.of<TaskService>(context, listen: false)
-              .deleteTask(task.id, task.userEmail);
+              .deleteTask(task.id);
           
           if (!context.mounted) return;
           
@@ -87,7 +87,6 @@ class TaskCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: InkWell(
           onTap: () {
-            // Show task details in a modal bottom sheet
             showModalBottomSheet(
               context: context,
               builder: (context) => _TaskDetailsSheet(task: task),
